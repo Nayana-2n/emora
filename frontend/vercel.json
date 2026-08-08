@@ -1,0 +1,6 @@
+{
+  "rewrites": [
+    { "source": "/api/wake", "destination": "/api/wake" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}

@@ -29,8 +29,11 @@ export function AuthError({ message }: { message: string }) {
   return <p className="mb-4 rounded-xl border border-bad/30 bg-bad/10 px-4 py-2.5 text-sm text-bad">{message}</p>
 }
 
+const DEMO_EMAIL = 'judge@demo.com'
+const DEMO_PASSWORD = 'demo1234'
+
 export function LoginPage() {
-  const { login } = useAuth()
+  const { login, signup } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -47,6 +50,23 @@ export function LoginPage() {
     } finally {
       setBusy(false)
     }
+  }
+
+  const onDemo = async () => {
+    setError('')
+    setBusy(true)
+    try {
+      await login(DEMO_EMAIL, DEMO_PASSWORD)
+    } catch {
+      try {
+        await signup(DEMO_EMAIL, DEMO_PASSWORD, 'Demo Judge')
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Demo login failed')
+        setBusy(false)
+        return
+      }
+    }
+    setBusy(false)
   }
 
   return (
@@ -85,6 +105,14 @@ export function LoginPage() {
           className="aurora-bg mt-2 rounded-xl px-4 py-3 text-sm font-semibold text-ink transition hover:brightness-110 active:scale-[0.98] disabled:opacity-50"
         >
           {busy ? 'Signing in…' : 'Sign in'}
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onDemo}
+          className="rounded-xl border border-line bg-surface-2 px-4 py-3 text-sm font-semibold text-accent transition hover:bg-surface-2/70 active:scale-[0.98] disabled:opacity-50"
+        >
+          {busy ? 'One moment…' : 'Try the demo account — no signup needed'}
         </button>
         <p className="text-center text-sm text-muted">
           New here?{' '}

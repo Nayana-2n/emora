@@ -19,6 +19,22 @@ export class ApiError extends Error {
   }
 }
 
+const RETRY_DELAYS = [1500, 4000, 10000]
+
+async function fetchWithRetry(url: string, init: RequestInit): Promise<Response> {
+  let lastErr: unknown
+  for (let i = 0; i <= RETRY_DELAYS.length; i++) {
+    try {
+      return await fetch(url, init)
+    } catch (err) {
+      lastErr = err
+      if (i === RETRY_DELAYS.length) break
+      await new Promise((r) => setTimeout(r, RETRY_DELAYS[i]))
+    }
+  }
+  throw lastErr
+}
+
 async function handleResponse<T>(res: Response): Promise<T> {
   if (res.status === 401) {
     setToken(null)
@@ -43,7 +59,7 @@ export async function api<T = unknown>(path: string, options: RequestInit = {}):
   if (!(options.body instanceof FormData)) headers.set('Content-Type', 'application/json')
   const token = getToken()
   if (token) headers.set('Authorization', `Bearer ${token}`)
-  const res = await fetch(`${API_BASE}${path}`, { ...options, headers })
+  const res = await fetchWithRetry(`${API_BASE}${path}`, { ...options, headers })
   return handleResponse<T>(res)
 }
 
@@ -51,7 +67,7 @@ export async function apiBlob(path: string): Promise<Blob> {
   const headers = new Headers()
   const token = getToken()
   if (token) headers.set('Authorization', `Bearer ${token}`)
-  const res = await fetch(`${API_BASE}${path}`, { headers })
+  const res = await fetchWithRetry(`${API_BASE}${path}`, { headers })
   if (!res.ok) await handleResponse(res)
   return res.blob()
 }
@@ -66,4 +82,8 @@ export function putJSON<T = unknown>(path: string, body: unknown) {
 
 export function del<T = unknown>(path: string) {
   return api<T>(path, { method: 'DELETE' })
+}
+
+export function wakeBackend() {
+  fetchWithRetry(`${API_BASE}/`, { method: 'GET' }).catch(() => {})
 }
