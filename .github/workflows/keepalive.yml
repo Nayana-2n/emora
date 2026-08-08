@@ -1,0 +1,13 @@
+name: Keep backend awake
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Render backend
+        run: curl -sS -o /dev/null --max-time 60 https://emora-backend-yz2o.onrender.com/
