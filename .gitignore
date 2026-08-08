@@ -27,3 +27,5 @@ qa_backend.pid
 .DS_Store
 Thumbs.db
 backend/__MACOSX
+.vercel
+.env*

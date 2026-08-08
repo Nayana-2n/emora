@@ -1,0 +1,10 @@
+.git
+.gitignore
+.vercel
+backend
+backend.zip
+qa_backend.log
+qa_backend.err.log
+qa_backend.pid
+render.yaml
+README.md
