@@ -1,6 +1,13 @@
 export const TOKEN_KEY = 'emora_token'
 
 const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? ''
+const FALLBACK_API_BASE =
+  (import.meta.env.VITE_FALLBACK_API_BASE as string | undefined) ?? 'https://ability-drawn-plaza-poison.trycloudflare.com'
+
+const API_BASES: string[] = []
+if (API_BASE) API_BASES.push(API_BASE)
+else API_BASES.push('')
+if (FALLBACK_API_BASE && API_BASES[0] !== '') API_BASES.push(FALLBACK_API_BASE)
 
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY)
@@ -19,17 +26,25 @@ export class ApiError extends Error {
   }
 }
 
-const RETRY_DELAYS = [1500, 4000, 10000]
+const ATTEMPTS: Array<{ base: number; delay: number }> = [
+  { base: 0, delay: 0 },
+  { base: 0, delay: 1500 },
+  { base: 1, delay: 0 },
+  { base: 1, delay: 1500 },
+  { base: 0, delay: 4000 },
+  { base: 0, delay: 10000 },
+]
 
-async function fetchWithRetry(url: string, init: RequestInit): Promise<Response> {
+async function fetchWithRetry(path: string, init: RequestInit): Promise<Response> {
   let lastErr: unknown
-  for (let i = 0; i <= RETRY_DELAYS.length; i++) {
+  for (const { base, delay } of ATTEMPTS) {
+    const baseUrl = API_BASES[base]
+    if (!baseUrl) continue
+    if (delay) await new Promise((r) => setTimeout(r, delay))
     try {
-      return await fetch(url, init)
+      return await fetch(`${baseUrl}${path}`, init)
     } catch (err) {
       lastErr = err
-      if (i === RETRY_DELAYS.length) break
-      await new Promise((r) => setTimeout(r, RETRY_DELAYS[i]))
     }
   }
   throw lastErr
@@ -59,7 +74,7 @@ export async function api<T = unknown>(path: string, options: RequestInit = {}):
   if (!(options.body instanceof FormData)) headers.set('Content-Type', 'application/json')
   const token = getToken()
   if (token) headers.set('Authorization', `Bearer ${token}`)
-  const res = await fetchWithRetry(`${API_BASE}${path}`, { ...options, headers })
+  const res = await fetchWithRetry(path, { ...options, headers })
   return handleResponse<T>(res)
 }
 
@@ -67,7 +82,7 @@ export async function apiBlob(path: string): Promise<Blob> {
   const headers = new Headers()
   const token = getToken()
   if (token) headers.set('Authorization', `Bearer ${token}`)
-  const res = await fetchWithRetry(`${API_BASE}${path}`, { headers })
+  const res = await fetchWithRetry(path, { headers })
   if (!res.ok) await handleResponse(res)
   return res.blob()
 }
@@ -85,5 +100,5 @@ export function del<T = unknown>(path: string) {
 }
 
 export function wakeBackend() {
-  fetchWithRetry(`${API_BASE}/`, { method: 'GET' }).catch(() => {})
+  fetchWithRetry('/', { method: 'GET' }).catch(() => {})
 }
