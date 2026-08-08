@@ -1,0 +1,146 @@
+@import "tailwindcss";
+
+@theme {
+  /* Base surfaces — quiet, warm dark */
+  --color-ink: #0b0d10;
+  --color-bg: #0b0d10;
+  --color-bg-2: #111418;
+  --color-surface: #171b20;
+  --color-surface-2: #1e232a;
+  --color-surface-3: #2a313a;
+  --color-line: #2a2f37;
+  --color-line-2: #3a4048;
+
+  /* Text */
+  --color-cream: #f5f3ef;
+  --color-muted: #a8adb5;
+  --color-muted-2: #6c7278;
+
+  /* Brand — dusty rose */
+  --color-accent: #e8a0a0;
+  --color-accent-2: #f4c9c9;
+  --color-accent-soft: #c97b7b;
+  --color-accent-glow: #e8a0a026;
+
+  /* Semantic status */
+  --color-good: #a8c4a2;
+  --color-warn: #ffc857;
+  --color-bad: #e5626c;
+
+  /* Emotion palette */
+  --color-happy: #e3c08d;
+  --color-relaxed: #a8c4a2;
+  --color-excited: #e8a0a0;
+  --color-neutral: #8a9099;
+  --color-sad: #6b8cae;
+  --color-stressed: #e5626c;
+  --color-angry: #c4453f;
+
+  /* Legacy aurora aliases → rose (safety net for untouched pages) */
+  --color-aurora-teal: #f4c9c9;
+  --color-aurora-indigo: #e8a0a0;
+  --color-aurora-violet: #c97b7b;
+
+  --font-serif: "Fraunces", ui-serif, Georgia, serif;
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  --animate-aurora: aurora 18s ease-in-out infinite;
+  --animate-fade-up: fade-up 0.5s ease-out both;
+  --animate-pulse-soft: pulse-soft 2.4s ease-in-out infinite;
+  --animate-speak: speak 0.9s ease-in-out infinite;
+  --animate-blob-a: blob-a 26s ease-in-out infinite alternate;
+  --animate-blob-b: blob-b 32s ease-in-out infinite alternate;
+  --animate-breathe: breathe 7s ease-in-out infinite;
+  --animate-shimmer: shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes aurora {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+@keyframes speak {
+  0%, 100% { transform: scaleY(0.35); }
+  50% { transform: scaleY(1); }
+}
+
+@keyframes blob-a {
+  0% { transform: translate(-6%, -4%) scale(1); }
+  100% { transform: translate(8%, 6%) scale(1.15); }
+}
+
+@keyframes blob-b {
+  0% { transform: translate(6%, 4%) scale(1.1); }
+  100% { transform: translate(-8%, -6%) scale(0.95); }
+}
+
+@keyframes breathe {
+  0%, 100% { opacity: 0.55; transform: scale(1); }
+  50% { opacity: 0.9; transform: scale(1.035); }
+}
+
+@keyframes shimmer {
+  0%, 100% { opacity: 0.25; transform: translateY(0); }
+  50% { opacity: 1; transform: translateY(-2px); }
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-cream);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Dusty rose brand gradient (legacy .aurora-bg now maps to brand) */
+.aurora-bg {
+  background-image: linear-gradient(120deg, #f4c9c9, #e8a0a0 58%, #c97b7b);
+}
+
+.aurora-text {
+  background-image: linear-gradient(120deg, #f4c9c9, #e8a0a0 60%, #f5f3ef);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Soft rose glow for heroes and key numbers */
+.glow-accent {
+  box-shadow: 0 0 42px rgba(232, 160, 160, 0.15), 0 0 2px rgba(244, 201, 201, 0.18);
+}
+
+.glass {
+  background: rgba(23, 27, 32, 0.72);
+  backdrop-filter: blur(14px);
+  border: 1px solid var(--color-line);
+}
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--color-surface-3); border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-muted); }
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

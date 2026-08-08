@@ -1,0 +1,29 @@
+# ---- Secrets (never commit) ----
+.env
+backend/backend/.env
+**/.env
+
+# ---- Node / frontend ----
+node_modules/
+dist/
+*.local
+
+# ---- Python ----
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# ---- Runtime data (SQLite, uploads) ----
+backend/backend/data/
+
+# ---- Local junk ----
+backend.zip
+qa_backend.log
+qa_backend.err.log
+qa_backend.pid
+
+# ---- OS ----
+.DS_Store
+Thumbs.db
+backend/__MACOSX
