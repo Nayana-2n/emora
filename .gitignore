@@ -29,3 +29,4 @@ Thumbs.db
 backend/__MACOSX
 .vercel
 .env*
+qa_backend.log.err
