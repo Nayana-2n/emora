@@ -1,13 +1,10 @@
 export const TOKEN_KEY = 'emora_token'
 
 const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? ''
-const FALLBACK_API_BASE =
-  (import.meta.env.VITE_FALLBACK_API_BASE as string | undefined) ?? 'https://ability-drawn-plaza-poison.trycloudflare.com'
+const FALLBACK_API_BASE = (import.meta.env.VITE_FALLBACK_API_BASE as string | undefined) ?? ''
 
-const API_BASES: string[] = []
-if (API_BASE) API_BASES.push(API_BASE)
-else API_BASES.push('')
-if (FALLBACK_API_BASE && API_BASES[0] !== '') API_BASES.push(FALLBACK_API_BASE)
+const API_BASES: string[] = [API_BASE]
+if (!API_BASES.includes(FALLBACK_API_BASE)) API_BASES.push(FALLBACK_API_BASE)
 
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY)
