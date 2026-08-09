@@ -1,10 +1,11 @@
 export const TOKEN_KEY = 'emora_token'
 
 const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? ''
-const FALLBACK_API_BASE = (import.meta.env.VITE_FALLBACK_API_BASE as string | undefined) ?? ''
 
-const API_BASES: string[] = [API_BASE]
-if (!API_BASES.includes(FALLBACK_API_BASE)) API_BASES.push(FALLBACK_API_BASE)
+// Same-origin Vercel serverless proxy is the primary API path (works on every
+// network). Direct Render access is only a backup in case the proxy is down.
+const API_BASES: string[] = ['', API_BASE].filter((b, i, arr) => b && arr.indexOf(b) === i)
+if (!API_BASES.length) API_BASES.push('')
 
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY)
