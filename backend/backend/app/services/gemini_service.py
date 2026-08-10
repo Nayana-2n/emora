@@ -2,7 +2,7 @@ import os
 import re
 import hashlib
 from pathlib import Path
-import google.generativeai as genai
+import requests
 from dotenv import load_dotenv
 
 # ... inside app/services/gemini_service.py ...
@@ -27,8 +27,32 @@ if api_key:
 else:
     print("DEBUG: No API Key found.")
 
-genai.configure(api_key=api_key)
 # ... rest of your code ...
+
+
+_GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+
+
+def _gemini_generate(model_name: str, prompt: str) -> str:
+    """Call Gemini through plain REST (no SDK). Returns reply text or raises."""
+    if not api_key:
+        raise RuntimeError("No GEMINI_API_KEY configured.")
+    resp = requests.post(
+        _GEMINI_URL.format(model=model_name),
+        params={"key": api_key},
+        json={"contents": [{"parts": [{"text": prompt}]}]},
+        timeout=60,
+    )
+    if resp.status_code != 200:
+        try:
+            msg = resp.json().get("error", {}).get("message", resp.text)
+        except Exception:
+            msg = resp.text
+        raise RuntimeError(f"{model_name} -> HTTP {resp.status_code}: {msg}")
+    try:
+        return resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+    except (KeyError, IndexError, TypeError) as e:
+        raise RuntimeError(f"{model_name} -> malformed response: {resp.text[:300]}")
 
 
 CRISIS_PATTERNS = [
@@ -243,17 +267,6 @@ def _smart_fallback(transcript, user_state, chat_history=None):
     ])
 
 
-'''# --- DEBUG PRINT ---
-if api_key:
-    print(f"DEBUG: Key length: {len(api_key)}")
-    print(f"DEBUG: First 4 chars: '{api_key[:4]}'")
-    print(f"DEBUG: Last 4 chars:  '{api_key[-4:]}'")
-else:
-    print("DEBUG: No key found.")
-# -------------------
-
-genai.configure(api_key=api_key)'''
-
 def generate_ai_response(transcript: str, video_emotions: dict, audio_emotions: dict, stress_score: float, chat_history: list = []) -> dict:
     
     # --- 1. MEMORY: Format Previous Context ---
@@ -374,23 +387,22 @@ def generate_ai_response(transcript: str, video_emotions: dict, audio_emotions: 
 
     # --- 4. CALL GEMINI ---
     try:
-        model_names = ['gemini-flash-latest', 'gemini-pro-latest', 'gemini-2.0-flash', 'gemini-pro']
-        response = None
+        model_names = ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-pro-latest', 'gemini-2.0-flash', 'gemini-pro']
+        response_text = None
         last_err = None
         for m_name in model_names:
             try:
-                model = genai.GenerativeModel(m_name)
-                response = model.generate_content(full_prompt)
-                if response and response.text:
+                response_text = _gemini_generate(m_name, full_prompt)
+                if response_text:
                     break
             except Exception as ex:
                 last_err = ex
                 continue
 
-        if not response or not response.text:
+        if not response_text:
             raise last_err or Exception("Failed to query Gemini models.")
 
-        reply = response.text.strip()
+        reply = response_text.strip()
 
         return {
             "reply": reply,

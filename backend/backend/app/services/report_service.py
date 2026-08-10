@@ -52,14 +52,7 @@ def compute_report_metrics(interactions: list[dict], sleep_docs: list[dict],
 def gemini_narrative(metrics: dict) -> str:
     """Ask Gemini for a compassionate narrative + recommendation. Returns None on any failure."""
     try:
-        import google.generativeai as genai
-        from dotenv import load_dotenv
-        import os
-        load_dotenv(override=True)
-        key = os.getenv("GEMINI_API_KEY")
-        if not key:
-            return None
-        genai.configure(api_key=key.strip().replace('"', "").replace("'", ""))
+        from app.services.gemini_service import _gemini_generate
         prompt = f"""
 You are EMORA, an empathetic AI mental health companion writing a short report for a user.
 
@@ -74,9 +67,7 @@ User analytics (0-100 scale):
 Write 4-6 sentences: acknowledge how they are feeling, then give 3 practical, kind recommendations.
 Keep it warm, not clinical. Do not use bullet lists.
 """
-        model = genai.GenerativeModel("gemini-flash-latest")
-        resp = model.generate_content(prompt)
-        return resp.text.strip() if resp and resp.text else None
+        return _gemini_generate("gemini-flash-latest", prompt) or None
     except Exception:
         return None
 

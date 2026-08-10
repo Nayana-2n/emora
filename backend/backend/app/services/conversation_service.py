@@ -6,7 +6,9 @@ from app.services.text_processor import analyze_text_sentiment
 
 try:
     from app.services.gemini_service import generate_ai_response
-except Exception:
+except Exception as _imp_err:
+    print(f"[!] gemini_service import failed: {_imp_err!r}")
+
     def generate_ai_response(transcript, video_emotions, audio_emotions, stress_score, chat_history=None, **kwargs):
         return {"reply": "I am here with you. Tell me more about that.", "status": "fallback"}
 
