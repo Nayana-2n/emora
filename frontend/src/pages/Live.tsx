@@ -482,7 +482,13 @@ export default function Live() {
       try {
         await startRecorder()
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Microphone unavailable')
+        const name = e instanceof DOMException ? e.name : ''
+        const msg = e instanceof Error ? e.message : 'Microphone unavailable'
+        if (name === 'NotAllowedError' || /permission|denied|not allowed/i.test(msg)) {
+          setError('Microphone permission is blocked. In Chrome, tap the lock icon next to the URL → Site settings → Microphone → Allow, then reload and try again.')
+        } else {
+          setError(msg)
+        }
       }
     }
   }
