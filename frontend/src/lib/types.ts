@@ -14,6 +14,7 @@ export interface EmotionResult {
   confidence: number
   stress?: number
   distribution: Record<string, number>
+  transcript?: string
 }
 
 export interface MoodDoc {

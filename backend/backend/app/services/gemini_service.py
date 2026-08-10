@@ -167,6 +167,47 @@ def _gemini_generate_vision(b64_jpeg: str, prompt: str) -> str:
         raise RuntimeError(f"gemini-vision -> malformed response: {resp.text[:300]}")
 
 
+# ---------------------------------------------------------------------------
+# SERVER-SIDE SPEECH-TO-TEXT (free Groq Whisper)
+# Browser SpeechRecognition is unreliable on some phones, so the audio chunks
+# we already upload are transcribed here. Configure:
+#   GROQ_API_KEY = free key from https://console.groq.com/keys
+#   GROQ_WHISPER_MODEL = default whisper-large-v3-turbo (both free)
+# ---------------------------------------------------------------------------
+_GROQ_KEY = (os.getenv("GROQ_API_KEY") or "").strip().replace('"', "").replace("'", "")
+_GROQ_WHISPER_MODEL = os.getenv("GROQ_WHISPER_MODEL") or "whisper-large-v3-turbo"
+_GROQ_STT_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
+
+if _GROQ_KEY:
+    print("DEBUG: Groq Whisper STT enabled.")
+else:
+    print("DEBUG: Groq Whisper STT not configured (GROQ_API_KEY missing).")
+
+
+def transcribe_audio(file_path: str) -> str:
+    """Transcribe an audio/video file via Groq Whisper. Returns text or ''."""
+    if not _GROQ_KEY:
+        return ""
+    try:
+        with open(file_path, "rb") as f:
+            resp = requests.post(
+                _GROQ_STT_URL,
+                headers={"Authorization": f"Bearer {_GROQ_KEY}"},
+                files={"file": (os.path.basename(file_path), f)},
+                data={"model": _GROQ_WHISPER_MODEL},
+                timeout=30,
+            )
+        if resp.status_code == 200:
+            try:
+                return (resp.json().get("text") or "").strip()
+            except Exception:
+                return ""
+        print(f"[transcribe_audio] HTTP {resp.status_code}: {resp.text[:200]}")
+    except Exception as e:
+        print(f"[transcribe_audio] {e}")
+    return ""
+
+
 _FACE_PROMPT = (
     "Look at the face in this image. Reply with ONLY a JSON object, no other text, in this exact format: "
     '{"emotion":"happy","confidence":85}. '

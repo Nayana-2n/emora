@@ -55,10 +55,21 @@ async def facial_frame(file: UploadFile = File(...), user=Depends(get_current_us
 
 @router.post("/emotion/voice-chunk")
 async def voice_chunk(file: UploadFile = File(...), user=Depends(get_current_user)):
-    """Analyze a ~5s audio chunk. Returns dominant emotion, confidence + stress."""
+    """Analyze a ~5s audio chunk. Returns dominant emotion, confidence + stress,
+    plus a server-side transcript (Groq Whisper) when GROQ_API_KEY is set."""
     path = save_upload(file)
+    emotions, stress_score = {}, 0.0
+    transcript = ""
     try:
-        emotions, stress_score = analyze_audio_emotion(path)
+        try:
+            emotions, stress_score = analyze_audio_emotion(path)
+        except Exception as e:
+            print(f"[voice-chunk] audio analysis failed: {e}")
+        try:
+            from app.services.gemini_service import transcribe_audio
+            transcript = transcribe_audio(path)
+        except Exception as e:
+            print(f"[voice-chunk] transcription failed: {e}")
     finally:
         if os.path.exists(path):
             try:
@@ -67,15 +78,19 @@ async def voice_chunk(file: UploadFile = File(...), user=Depends(get_current_use
                 pass
     if emotions:
         dominant = max(emotions, key=emotions.get)
-        return {
+        result = {
             "status": "success",
             "emotion": dominant,
             "confidence": round(emotions[dominant], 2),
             "stress": round(float(stress_score), 2),
             "distribution": emotions,
         }
-    return {"status": "success", "emotion": "neutral", "confidence": 100.0, "stress": 0.0,
-            "distribution": {"neutral": 100.0}}
+    else:
+        result = {"status": "success", "emotion": "neutral", "confidence": 100.0, "stress": 0.0,
+                  "distribution": {"neutral": 100.0}}
+    if transcript:
+        result["transcript"] = transcript
+    return result
 
 
 class FuseRequest(BaseModel):

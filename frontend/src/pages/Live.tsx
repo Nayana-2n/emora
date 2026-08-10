@@ -234,6 +234,7 @@ export default function Live() {
   const submitMessage = async (text: string, viaVoice: boolean) => {
     if (!text.trim()) return
     setInterim('')
+    finalTranscriptRef.current = ''
     stopRecognition()
     recorderRef.current?.pause()
     const history = turns.map((t) => ({ role: t.role === 'user' ? 'user' : 'assistant', content: t.text }))
@@ -403,6 +404,19 @@ export default function Live() {
       setVoice(res)
       if (res.distribution && Object.keys(res.distribution).length) setLastVoice(res.distribution)
       if (typeof res.stress === 'number') setLastStress(res.stress)
+      // Server-side transcript (Groq Whisper) — reliable fallback for phones
+      // where the browser's SpeechRecognition produces nothing.
+      const t = res.transcript
+      if (t && t.trim() && sessionActiveRef.current && !busyRef.current && stateRef.current === 'listening') {
+        const normalized = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, '').trim()
+        const prev = finalTranscriptRef.current.trim()
+        const dup = prev && normalized(t).length > 0 && normalized(prev).split(/\s+/).join(' ').includes(normalized(t).split(/\s+/).join(' '))
+        if (!dup) {
+          finalTranscriptRef.current = prev ? prev + ' ' + t.trim() : t.trim()
+          setInterim(finalTranscriptRef.current)
+          lastSpeechAtRef.current = Date.now()
+        }
+      }
     } catch {
       /* keep last known voice state */
     }
