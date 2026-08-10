@@ -43,6 +43,27 @@ const SPEECH_RECOGNITION =
       (window as unknown as { webkitSpeechRecognition?: new () => RecognitionLike }).webkitSpeechRecognition
     : undefined
 
+// On-device face emotion (face-api.js) — loaded lazily so the main bundle stays small.
+let faceApiPromise: Promise<typeof import('@vladmandic/face-api')> | null = null
+let faceModelsPromise: Promise<void> | null = null
+
+async function loadFaceApi() {
+  if (!faceApiPromise) faceApiPromise = import('@vladmandic/face-api')
+  return faceApiPromise
+}
+
+async function loadFaceModels() {
+  if (!faceModelsPromise) {
+    faceModelsPromise = loadFaceApi().then(async (faceapi) => {
+      await Promise.all([
+        faceapi.nets.tinyFaceDetector.loadFromUri('/models'),
+        faceapi.nets.faceExpressionNet.loadFromUri('/models'),
+      ])
+    })
+  }
+  return faceModelsPromise
+}
+
 const FILM_GRAIN =
   "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.55'/%3E%3C/svg%3E\")"
 
@@ -186,6 +207,7 @@ export default function Live() {
   const [lastVoice, setLastVoice] = useState<Record<string, number>>({})
   const [lastStress, setLastStress] = useState(0)
   const [typeText, setTypeText] = useState('')
+  const [interim, setInterim] = useState('')
   const [cameraOn, setCameraOn] = useState(false)
   const [mode, setMode] = useState<SensorMode>('both')
   const [error, setError] = useState('')
@@ -211,6 +233,7 @@ export default function Live() {
 
   const submitMessage = async (text: string, viaVoice: boolean) => {
     if (!text.trim()) return
+    setInterim('')
     stopRecognition()
     recorderRef.current?.pause()
     const history = turns.map((t) => ({ role: t.role === 'user' ? 'user' : 'assistant', content: t.text }))
@@ -264,6 +287,7 @@ export default function Live() {
         if (result.isFinal) finalTranscriptRef.current += result[0].transcript + ' '
         else interim += result[0].transcript
       }
+      setInterim(interim)
       lastSpeechAtRef.current = Date.now()
     }
 
@@ -408,6 +432,51 @@ export default function Live() {
     const video = videoRef.current
     const canvas = canvasRef.current
     if (!video || !canvas || video.readyState < 2) return
+
+    // 1) On-device face emotion (tiny models, instant, no API / quota). Smile → happy.
+    try {
+      const faceapi = await loadFaceApi()
+      await loadFaceModels()
+      const detections = await faceapi
+        .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.4 }))
+        .withFaceExpressions()
+      if (detections && detections.length > 0) {
+        const best = detections.reduce((a, b) =>
+          a.detection.box.width * a.detection.box.height > b.detection.box.width * b.detection.box.height ? a : b
+        )
+        const raw = best.expressions as unknown as Record<string, number>
+        const map: Record<string, string> = {
+          neutral: 'neutral',
+          happy: 'happy',
+          sad: 'sad',
+          angry: 'angry',
+          fearful: 'fear',
+          disgusted: 'disgust',
+          surprised: 'surprise',
+        }
+        const distribution: Record<string, number> = {}
+        for (const [k, v] of Object.entries(raw)) {
+          const key = map[k] ?? k
+          distribution[key] = Math.round((distribution[key] ?? 0) + v * 100)
+        }
+        let emotion = 'neutral'
+        let confidence = 0
+        for (const [k, v] of Object.entries(distribution)) {
+          if (v > confidence) {
+            confidence = v
+            emotion = k
+          }
+        }
+        const res: EmotionResult = { status: 'success', emotion, confidence, distribution }
+        setFace(res)
+        setLastFace(distribution)
+        return
+      }
+    } catch {
+      /* on-device failed — fall through to the vision API */
+    }
+
+    // 2) Backend fallback (vision AI)
     canvas.width = video.videoWidth || 320
     canvas.height = video.videoHeight || 240
     canvas.getContext('2d')?.drawImage(video, 0, 0)
@@ -506,6 +575,7 @@ export default function Live() {
     sessionActiveRef.current = true
     busyRef.current = false
     finalTranscriptRef.current = ''
+    setInterim('')
     setSttUnsupported(!SPEECH_RECOGNITION)
     setState('starting')
     try {
@@ -588,7 +658,7 @@ export default function Live() {
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' })
-  }, [turns, state])
+  }, [turns, state, interim])
 
   const stateRef = useRef(state)
   stateRef.current = state
@@ -780,6 +850,13 @@ export default function Live() {
                   <div className="flex justify-start">
                     <div className="rounded-2xl border border-line bg-surface-2 px-4 py-3">
                       <ThinkingDots />
+                    </div>
+                  </div>
+                )}
+                {state === 'listening' && interim && (
+                  <div className="flex justify-end">
+                    <div className="max-w-[85%] rounded-2xl border border-dashed border-accent/50 bg-surface-2/60 px-4 py-2.5 text-sm italic text-muted">
+                      {interim}
                     </div>
                   </div>
                 )}
