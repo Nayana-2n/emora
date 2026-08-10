@@ -2,6 +2,7 @@ import uuid
 
 from app.core.firestore_db import user_base, add_doc, list_docs, get_doc, save_doc
 from app.utils.time_utils import now_ts
+from app.services.text_processor import analyze_text_sentiment
 
 try:
     from app.services.gemini_service import generate_ai_response
@@ -74,7 +75,16 @@ def process_turn(uid: str, message: str, cid: str = None, face=None, voice=None,
     fused = {}
     for k in set(face) | set(voice):
         fused[k] = (face.get(k, 0) * 0.5) + (voice.get(k, 0) * 0.3)
+    text_emo = None
+    if not fused:
+        # Text-only turn: detect emotion from what the user wrote, and derive a
+        # stress estimate from the amount of negative emotion detected.
+        text_emo = analyze_text_sentiment(message)
+        fused = dict(text_emo)
     dominant = max(fused, key=fused.get) if fused else "neutral"
+    if text_emo is not None and dominant != "neutral":
+        if not isinstance(stress, (int, float)) or stress <= 0:
+            stress = round(text_emo.get("sad", 0) + text_emo.get("angry", 0), 2)
     if confidence is None:
         confidence = round(float(fused.get(dominant, 0)), 2) if fused else None
 

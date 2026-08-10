@@ -50,25 +50,26 @@ def analyze_text_sentiment(text: str) -> dict:
 
     # Rule/Keyword-based sentiment fallback
     lower = text.lower()
-    happy_words = ["happy", "great", "good", "awesome", "joy", "excited", "love", "wonderful", "calm", "relax"]
-    sad_words = ["sad", "depressed", "unhappy", "cry", "lonely", "hopeless", "hurt", "grief", "pain"]
-    angry_words = ["angry", "mad", "furious", "hate", "annoyed", "frustrated", "screaming", "rage"]
+    happy_words = ["happy", "great", "good", "awesome", "joy", "excited", "love", "wonderful", "calm", "relax", "smil"]
+    sad_words = ["sad", "depressed", "unhappy", "cry", "crying", "lonely", "hopeless", "hurt", "grief", "pain", "blue", "down", "miserable", "upset", "tired", "stressed"]
+    angry_words = ["angry", "mad", "furious", "hate", "annoyed", "frustrated", "screaming", "rage", "irritated", "pissed", "resent"]
 
-    h_score = sum(20 for w in happy_words if w in lower)
-    s_score = sum(20 for w in sad_words if w in lower)
-    a_score = sum(20 for w in angry_words if w in lower)
+    h_score = sum(30 for w in happy_words if w in lower)
+    s_score = sum(30 for w in sad_words if w in lower)
+    a_score = sum(30 for w in angry_words if w in lower)
 
     total_detected = h_score + s_score + a_score
     if total_detected == 0:
         return {"happy": 10.0, "sad": 10.0, "angry": 10.0, "neutral": 70.0}
-    
-    n_score = max(0, 100 - total_detected)
+
+    # The detected emotion should dominate; neutral is just a small remainder.
+    n_score = 15.0
     total = total_detected + n_score
     return {
         "happy": round((h_score / total) * 100.0, 2),
         "sad": round((s_score / total) * 100.0, 2),
         "angry": round((a_score / total) * 100.0, 2),
-        "neutral": round((n_score / total) * 100.0, 2)
+        "neutral": round((n_score / total) * 100.0, 2),
     }
 
 if __name__ == "__main__":
