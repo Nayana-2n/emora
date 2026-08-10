@@ -224,6 +224,8 @@ export default function Live() {
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const finalTranscriptRef = useRef('')
   const lastSpeechAtRef = useRef(0)
+  const lastActivityRef = useRef<'browser' | 'server' | null>(null)
+  const silentChunkRef = useRef(true)
   const busyRef = useRef(false)
   const sessionActiveRef = useRef(false)
   const faceTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -290,6 +292,7 @@ export default function Live() {
       }
       setInterim(interim)
       lastSpeechAtRef.current = Date.now()
+      lastActivityRef.current = 'browser'
     }
 
     rec.onerror = (event: { error: string }) => {
@@ -342,13 +345,17 @@ export default function Live() {
     if (stateRef.current !== 'listening') return
     const elapsed = Date.now() - lastSpeechAtRef.current
     const text = finalTranscriptRef.current.trim()
-    if (text && elapsed > 3000) {
-      finalTranscriptRef.current = ''
-      busyRef.current = true
-      submitMessage(text, true).finally(() => {
-        busyRef.current = false
-      })
-    }
+    if (!text || elapsed < 3000) return
+    // Server-STT turns need a silent chunk to confirm the user really stopped;
+    // this stops a mid-sentence pause from submitting half a phrase while the
+    // next audio chunk is still buffering.
+    if (lastActivityRef.current === 'server' && !silentChunkRef.current) return
+    finalTranscriptRef.current = ''
+    setInterim('')
+    busyRef.current = true
+    submitMessage(text, true).finally(() => {
+      busyRef.current = false
+    })
   }
 
   const startRecorder = async () => {
@@ -407,13 +414,18 @@ export default function Live() {
       // Server-side transcript (Groq Whisper) — reliable fallback for phones
       // where the browser's SpeechRecognition produces nothing.
       const t = res.transcript
-      if (t && t.trim() && sessionActiveRef.current && !busyRef.current && stateRef.current === 'listening') {
-        const normalized = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, '').trim()
-        const prev = finalTranscriptRef.current.trim()
-        const dup = prev && normalized(t).length > 0 && normalized(prev).split(/\s+/).join(' ').includes(normalized(t).split(/\s+/).join(' '))
-        if (!dup) {
-          finalTranscriptRef.current = prev ? prev + ' ' + t.trim() : t.trim()
-          setInterim(finalTranscriptRef.current)
+      if (sessionActiveRef.current && !busyRef.current && stateRef.current === 'listening') {
+        const hasSpeech = !!t && !!t.trim()
+        silentChunkRef.current = !hasSpeech
+        if (hasSpeech) {
+          lastActivityRef.current = 'server'
+          const normalized = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, '').trim()
+          const prev = finalTranscriptRef.current.trim()
+          const dup = prev && normalized(t).length > 0 && normalized(prev).split(/\s+/).join(' ').includes(normalized(t).split(/\s+/).join(' '))
+          if (!dup) {
+            finalTranscriptRef.current = prev ? prev + ' ' + t.trim() : t.trim()
+            setInterim(finalTranscriptRef.current)
+          }
           lastSpeechAtRef.current = Date.now()
         }
       }
@@ -589,6 +601,8 @@ export default function Live() {
     sessionActiveRef.current = true
     busyRef.current = false
     finalTranscriptRef.current = ''
+    lastActivityRef.current = null
+    silentChunkRef.current = true
     setInterim('')
     setSttUnsupported(!SPEECH_RECOGNITION)
     setState('starting')

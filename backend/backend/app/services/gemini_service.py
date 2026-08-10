@@ -183,6 +183,17 @@ if _GROQ_KEY:
 else:
     print("DEBUG: Groq Whisper STT not configured (GROQ_API_KEY missing).")
 
+# Reuse the Groq key as the free CHAT provider too when no FREE_AI_* vars are
+# set — one key then powers speech-to-text + chat. Groq hosts free models
+# (llama-3.3-70b-versatile) with generous daily limits, so replies stay real
+# and varied instead of falling back to canned local text.
+if not _FREE_KEY and _GROQ_KEY:
+    _FREE_KEY = _GROQ_KEY
+    _FREE_BASE_URL = "https://api.groq.com/openai/v1"
+    _FREE_MODEL = os.getenv("GROQ_CHAT_MODEL") or "llama-3.3-70b-versatile"
+    _FREE_VISION_MODEL = os.getenv("GROQ_VISION_MODEL") or "llama-3.2-11b-vision-preview"
+    print(f"DEBUG: Free AI provider now using Groq: {_FREE_BASE_URL} / {_FREE_MODEL}")
+
 
 def transcribe_audio(file_path: str) -> str:
     """Transcribe an audio/video file via Groq Whisper. Returns text or ''."""
