@@ -16,6 +16,7 @@ from app.api import chat
 from app.api import analytics
 from app.api import quotes
 from app.api import professionals
+from app.api.auth import seed_demo_account
 
 # Initialize App
 app = FastAPI(
@@ -67,6 +68,11 @@ def root():
             "gemini": "active"
         }
     }
+
+
+@app.on_event("startup")
+def _startup_seed():
+    seed_demo_account()
 
 # 5. Run Server (If file is run directly)
 if __name__ == "__main__":

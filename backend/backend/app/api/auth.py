@@ -38,6 +38,32 @@ def _public_user(user_id: str, doc: dict) -> dict:
     }
 
 
+DEMO_EMAIL = "judge@demo.com"
+DEMO_PASSWORD = "demo1234"
+
+
+def seed_demo_account() -> None:
+    """Ensure the hackathon demo account exists.
+
+    Render's free tier has no persistent disk, so the SQLite DB is reset on
+    every deploy. Recreating the demo account at startup guarantees judges can
+    always log in with the demo button regardless of how many times the
+    backend redeploys.
+    """
+    email = DEMO_EMAIL.strip().lower()
+    if query_docs(_USERS_ROOT, "email", email):
+        return
+    user_id = uuid.uuid4().hex
+    save_doc(_user_path(user_id), {
+        "email": email,
+        "password_hash": hash_password(DEMO_PASSWORD),
+        "provider": "email",
+        "display_name": "Demo Judge",
+        "created_at": now_ts(),
+    })
+    print(f"[seed] Demo account ready: {email}")
+
+
 @router.post("/signup")
 def signup(body: UserCreate):
     identity_docs = query_docs(_USERS_ROOT, "email", body.email)
