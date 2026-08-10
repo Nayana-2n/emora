@@ -1,5 +1,6 @@
 import os
 import re
+import json
 import hashlib
 from pathlib import Path
 import requests
@@ -53,6 +54,167 @@ def _gemini_generate(model_name: str, prompt: str) -> str:
         return resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
     except (KeyError, IndexError, TypeError) as e:
         raise RuntimeError(f"{model_name} -> malformed response: {resp.text[:300]}")
+
+
+# ---------------------------------------------------------------------------
+# FREE AI PROVIDER (OpenAI-compatible: OpenRouter / Cerebras / Groq / etc.)
+# Used as the PRIMARY chat engine so the app never depends on a paid or
+# quota-limited key. Configure via env vars:
+#   FREE_AI_KEY        = your free provider API key (required to enable)
+#   FREE_AI_BASE_URL   = default: https://openrouter.ai/api/v1
+#   FREE_AI_MODEL      = default: meta-llama/llama-3.3-70b-instruct:free
+#   FREE_AI_VISION_MODEL = default: meta-llama/llama-3.2-11b-vision-instruct:free
+# ---------------------------------------------------------------------------
+_FREE_BASE_URL = (os.getenv("FREE_AI_BASE_URL") or "https://openrouter.ai/api/v1").rstrip("/")
+_FREE_KEY = (os.getenv("FREE_AI_KEY") or "").strip().replace('"', "").replace("'", "")
+_FREE_MODEL = os.getenv("FREE_AI_MODEL") or "meta-llama/llama-3.3-70b-instruct:free"
+_FREE_VISION_MODEL = os.getenv("FREE_AI_VISION_MODEL") or "meta-llama/llama-3.2-11b-vision-instruct:free"
+
+if _FREE_KEY:
+    print(f"DEBUG: Free AI provider enabled: {_FREE_BASE_URL} / {_FREE_MODEL}")
+else:
+    print("DEBUG: Free AI provider not configured (FREE_AI_KEY missing).")
+
+
+def _free_ai_generate(prompt: str) -> str:
+    """Call the free OpenAI-compatible provider. Returns reply text or raises."""
+    if not _FREE_KEY:
+        raise RuntimeError("FREE_AI_KEY not configured.")
+    resp = requests.post(
+        f"{_FREE_BASE_URL}/chat/completions",
+        headers={"Authorization": f"Bearer {_FREE_KEY}", "Content-Type": "application/json"},
+        json={
+            "model": _FREE_MODEL,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": 500,
+        },
+        timeout=60,
+    )
+    if resp.status_code != 200:
+        try:
+            msg = resp.json().get("error", {}).get("message", resp.text)
+        except Exception:
+            msg = resp.text
+        raise RuntimeError(f"free-ai -> HTTP {resp.status_code}: {msg}")
+    try:
+        return resp.json()["choices"][0]["message"]["content"].strip()
+    except (KeyError, IndexError, TypeError) as e:
+        raise RuntimeError(f"free-ai -> malformed response: {resp.text[:300]}")
+
+
+def _free_ai_generate_vision(b64_jpeg: str, prompt: str) -> str:
+    """Call the free provider's vision model on a JPEG frame. Returns text or raises."""
+    if not _FREE_KEY:
+        raise RuntimeError("FREE_AI_KEY not configured.")
+    resp = requests.post(
+        f"{_FREE_BASE_URL}/chat/completions",
+        headers={"Authorization": f"Bearer {_FREE_KEY}", "Content-Type": "application/json"},
+        json={
+            "model": _FREE_VISION_MODEL,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64_jpeg}"}},
+                    ],
+                }
+            ],
+            "max_tokens": 200,
+        },
+        timeout=60,
+    )
+    if resp.status_code != 200:
+        try:
+            msg = resp.json().get("error", {}).get("message", resp.text)
+        except Exception:
+            msg = resp.text
+        raise RuntimeError(f"free-ai-vision -> HTTP {resp.status_code}: {msg}")
+    try:
+        return resp.json()["choices"][0]["message"]["content"].strip()
+    except (KeyError, IndexError, TypeError) as e:
+        raise RuntimeError(f"free-ai-vision -> malformed response: {resp.text[:300]}")
+
+
+def _gemini_generate_vision(b64_jpeg: str, prompt: str) -> str:
+    """Call Gemini with a JPEG frame (vision). Returns text or raises."""
+    if not api_key:
+        raise RuntimeError("No GEMINI_API_KEY configured.")
+    resp = requests.post(
+        _GEMINI_URL.format(model="gemini-2.5-flash"),
+        params={"key": api_key},
+        json={
+            "contents": [
+                {
+                    "parts": [
+                        {"text": prompt},
+                        {"inline_data": {"mime_type": "image/jpeg", "data": b64_jpeg}},
+                    ]
+                }
+            ]
+        },
+        timeout=60,
+    )
+    if resp.status_code != 200:
+        try:
+            msg = resp.json().get("error", {}).get("message", resp.text)
+        except Exception:
+            msg = resp.text
+        raise RuntimeError(f"gemini-vision -> HTTP {resp.status_code}: {msg}")
+    try:
+        return resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+    except (KeyError, IndexError, TypeError) as e:
+        raise RuntimeError(f"gemini-vision -> malformed response: {resp.text[:300]}")
+
+
+_FACE_PROMPT = (
+    "Look at the face in this image. Reply with ONLY a JSON object, no other text, in this exact format: "
+    '{"emotion":"happy","confidence":85}. '
+    'emotion must be exactly one of: happy, sad, angry, neutral, surprised, fearful. '
+    "confidence is 0-100. If no clear face is visible, use neutral with a low confidence."
+)
+
+
+def classify_face_frame(b64_jpeg: str) -> dict:
+    """Classify a webcam JPEG frame using a vision AI (free provider, then Gemini).
+
+    Returns a distribution dict compatible with the local model output, e.g.
+    {"emotion": "happy", "confidence": 85.0, "distribution": {"happy": 85.0, "neutral": 15.0}}.
+    """
+    text = None
+    last_err = None
+    for fn in (_free_ai_generate_vision, _gemini_generate_vision):
+        try:
+            text = fn(b64_jpeg, _FACE_PROMPT)
+            if text:
+                break
+        except Exception as e:
+            last_err = e
+            continue
+    if not text:
+        print(f"[classify_face_frame] all vision providers failed: {last_err}")
+        return {"emotion": "neutral", "confidence": 100.0, "distribution": {"neutral": 100.0}}
+
+    match = re.search(r"\{.*\}", text, re.DOTALL)
+    if not match:
+        return {"emotion": "neutral", "confidence": 100.0, "distribution": {"neutral": 100.0}}
+    try:
+        data = json.loads(match.group(0))
+    except Exception:
+        return {"emotion": "neutral", "confidence": 100.0, "distribution": {"neutral": 100.0}}
+
+    emotion = str(data.get("emotion") or "neutral").lower()
+    aliases = {"surprised": "surprise", "fearful": "fear", "angry": "angry",
+               "happy": "happy", "sad": "sad", "neutral": "neutral", "surprise": "surprise", "fear": "fear"}
+    emotion = aliases.get(emotion, "neutral")
+    try:
+        conf = float(data.get("confidence") or 50.0)
+    except Exception:
+        conf = 50.0
+    conf = max(0.0, min(100.0, conf))
+    distribution = {"neutral": round(100.0 - conf, 2)}
+    distribution[emotion] = round(conf, 2)
+    return {"emotion": emotion, "confidence": round(conf, 2), "distribution": distribution}
 
 
 CRISIS_PATTERNS = [
@@ -385,22 +547,36 @@ def generate_ai_response(transcript: str, video_emotions: dict, audio_emotions: 
     Generate the next response:
     """
 
-    # --- 4. CALL GEMINI ---
+    # --- 4. CALL AI (free provider first, then Gemini, then local backup) ---
     try:
-        model_names = ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-pro-latest', 'gemini-2.0-flash', 'gemini-pro']
         response_text = None
         last_err = None
-        for m_name in model_names:
-            try:
-                response_text = _gemini_generate(m_name, full_prompt)
+
+        # 4a. Free AI provider (primary)
+        try:
+            if _FREE_KEY:
+                response_text = _free_ai_generate(full_prompt)
                 if response_text:
-                    break
-            except Exception as ex:
-                last_err = ex
-                continue
+                    print("[ai] reply from free provider")
+        except Exception as ex:
+            last_err = ex
+            print(f"[ai] free provider failed: {ex}")
+
+        # 4b. Gemini models (backup)
+        if not response_text:
+            model_names = ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-pro-latest', 'gemini-2.0-flash', 'gemini-pro']
+            for m_name in model_names:
+                try:
+                    response_text = _gemini_generate(m_name, full_prompt)
+                    if response_text:
+                        print(f"[ai] reply from {m_name}")
+                        break
+                except Exception as ex:
+                    last_err = ex
+                    continue
 
         if not response_text:
-            raise last_err or Exception("Failed to query Gemini models.")
+            raise last_err or Exception("Failed to query AI providers.")
 
         reply = response_text.strip()
 
