@@ -1,7 +1,8 @@
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
-  Activity, BookOpen, Droplets, LayoutDashboard, LifeBuoy, LineChart, LogOut, Moon,
-  Radio, Sparkles, User, History, Lightbulb,
+  Activity, BookOpen, Droplets, LayoutDashboard, LifeBuoy, LineChart, LogOut, Menu, Moon,
+  Radio, Sparkles, User, History, Lightbulb, X,
 } from 'lucide-react'
 import { useAuth } from '../lib/auth'
 import { Logo } from './Logo'
@@ -24,8 +25,15 @@ const NAV = [
 export default function Layout() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
+  const [menuOpen, setMenuOpen] = useState(false)
+
+  useEffect(() => {
+    setMenuOpen(false)
+  }, [location.pathname])
 
   const onLogout = async () => {
+    setMenuOpen(false)
     await logout()
     navigate('/login')
   }
@@ -70,6 +78,9 @@ export default function Layout() {
       <div className="flex min-w-0 flex-1 flex-col max-lg:ml-0 lg:ml-60">
         <header className="sticky top-0 z-20 flex items-center justify-between border-b border-line bg-ink/80 px-6 py-3 backdrop-blur lg:hidden">
           <div className="flex items-center gap-2">
+            <button onClick={() => setMenuOpen((v) => !v)} className="rounded-lg p-1.5 text-muted hover:bg-surface-2" aria-label="Open menu">
+              {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </button>
             <Logo size={28} />
             <span className="font-serif text-lg font-semibold">EMORA</span>
           </div>
@@ -77,6 +88,29 @@ export default function Layout() {
             <LogOut className="h-4 w-4" />
           </button>
         </header>
+
+        {menuOpen && (
+          <div className="fixed inset-0 z-40 lg:hidden">
+            <div className="absolute inset-0 bg-ink/70 backdrop-blur-sm" onClick={() => setMenuOpen(false)} />
+            <nav className="absolute inset-x-0 top-0 max-h-[85vh] overflow-y-auto border-b border-line bg-ink/95 p-3 backdrop-blur">
+              {NAV.map(({ to, label, icon: Icon }) => (
+                <NavLink
+                  key={to}
+                  to={to}
+                  className={({ isActive }) =>
+                    `flex items-center gap-3 rounded-xl px-3 py-3 text-sm transition-colors ${
+                      isActive ? 'aurora-bg font-semibold text-ink' : 'text-muted hover:bg-surface-2 hover:text-cream'
+                    }`
+                  }
+                >
+                  <Icon className="h-4 w-4" />
+                  {label}
+                </NavLink>
+              ))}
+            </nav>
+          </div>
+        )}
+
         <main className="flex-1 px-6 py-6 max-lg:pb-24">
           <Outlet />
         </main>
