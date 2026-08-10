@@ -4,8 +4,8 @@ const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? ''
 
 // Same-origin Vercel serverless proxy is the primary API path (works on every
 // network). Direct Render access is only a backup in case the proxy is down.
-const API_BASES: string[] = ['', API_BASE].filter((b, i, arr) => b && arr.indexOf(b) === i)
-if (!API_BASES.length) API_BASES.push('')
+const API_BASES: string[] = ['']
+if (API_BASE) API_BASES.push(API_BASE)
 
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY)
