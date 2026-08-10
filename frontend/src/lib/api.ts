@@ -1,6 +1,6 @@
 export const TOKEN_KEY = 'emora_token'
 
-const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? ''
+const API_BASE = ((import.meta.env.VITE_API_BASE as string | undefined) ?? '').trim()
 
 // Same-origin Vercel serverless proxy is the primary API path (works on every
 // network). Direct Render access is only a backup in case the proxy is down.
@@ -37,7 +37,7 @@ async function fetchWithRetry(path: string, init: RequestInit): Promise<Response
   let lastErr: unknown
   for (const { base, delay } of ATTEMPTS) {
     const baseUrl = API_BASES[base]
-    if (!baseUrl) continue
+    if (baseUrl === undefined) continue
     if (delay) await new Promise((r) => setTimeout(r, delay))
     try {
       return await fetch(`${baseUrl}${path}`, init)
