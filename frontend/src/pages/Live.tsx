@@ -276,7 +276,7 @@ export default function Live() {
         event.error !== 'service-not-allowed'
       ) {
         recRef.current = null
-        startRecognition()
+        setTimeout(startRecognition, 400)
       }
     }
 
@@ -291,7 +291,13 @@ export default function Live() {
       rec.start()
       recRef.current = rec
     } catch {
-      /* already started */
+      // "recognition has already started" or mic still initialising — retry shortly.
+      setTimeout(() => {
+        if (recRef.current === rec) {
+          recRef.current = null
+          startRecognition()
+        }
+      }, 600)
     }
   }
 
@@ -321,58 +327,48 @@ export default function Live() {
   }
 
   const startRecorder = async () => {
-    try {
-      const audio = await navigator.mediaDevices.getUserMedia({ audio: true })
-      audio.getTracks().forEach((t) => t.stop())
-    } catch {
-      /* default mic only */
+    if (recorderRef.current) return
+    // Single getUserMedia call — a probe-then-reacquire pattern can fail on
+    // Android right after the user grants permission.
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    if (!sessionActiveRef.current) {
+      stream.getTracks().forEach((t) => t.stop())
+      return
     }
-    if (!recorderRef.current) {
+    if (!streamRef.current) streamRef.current = stream
+
+    if (!audioCtxRef.current) {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-        if (!sessionActiveRef.current) {
-          stream.getTracks().forEach((t) => t.stop())
-          return
+        const Ctx =
+          window.AudioContext ??
+          (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+        if (Ctx) {
+          const ctx = new Ctx()
+          const analyser = ctx.createAnalyser()
+          analyser.fftSize = 256
+          analyser.smoothingTimeConstant = 0.8
+          const src = ctx.createMediaStreamSource(stream)
+          src.connect(analyser)
+          audioCtxRef.current = ctx
+          analyserRef.current = analyser
+          if (ctx.state === 'suspended') void ctx.resume()
         }
-        if (!streamRef.current) streamRef.current = stream
-
-        if (!audioCtxRef.current) {
-          try {
-            const Ctx =
-              window.AudioContext ??
-              (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
-            if (Ctx) {
-              const ctx = new Ctx()
-              const analyser = ctx.createAnalyser()
-              analyser.fftSize = 256
-              analyser.smoothingTimeConstant = 0.8
-              const src = ctx.createMediaStreamSource(stream)
-              src.connect(analyser)
-              audioCtxRef.current = ctx
-              analyserRef.current = analyser
-              if (ctx.state === 'suspended') void ctx.resume()
-            }
-          } catch {
-            /* voice energy is optional */
-          }
-        }
-
-        const recorder = new MediaRecorder(stream, MIME_OPUS ? { mimeType: MIME_OPUS } : undefined)
-        recorder.ondataavailable = (e) => {
-          if (e.data.size > 0) audioChunksRef.current.push(e.data)
-        }
-        recorder.onstop = () => {
-          const blob = new Blob(audioChunksRef.current, { type: MIME_OPUS || 'audio/webm' })
-          audioChunksRef.current = []
-          if (blob.size > 0 && sessionActiveRef.current) sendVoiceChunk(blob)
-        }
-        recorder.start(5000)
-        recorderRef.current = recorder
-      } catch (e) {
-        recorderRef.current = null
-        throw e instanceof Error ? e : new Error('Microphone unavailable')
+      } catch {
+        /* voice energy is optional */
       }
     }
+
+    const recorder = new MediaRecorder(stream, MIME_OPUS ? { mimeType: MIME_OPUS } : undefined)
+    recorder.ondataavailable = (e) => {
+      if (e.data.size > 0) audioChunksRef.current.push(e.data)
+    }
+    recorder.onstop = () => {
+      const blob = new Blob(audioChunksRef.current, { type: MIME_OPUS || 'audio/webm' })
+      audioChunksRef.current = []
+      if (blob.size > 0 && sessionActiveRef.current) sendVoiceChunk(blob)
+    }
+    recorder.start(5000)
+    recorderRef.current = recorder
   }
 
   const sendVoiceChunk = async (blob: Blob) => {
