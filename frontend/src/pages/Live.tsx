@@ -75,6 +75,10 @@ const MIME_OPUS = (() => {
   return ''
 })()
 
+// A 5s audio chunk below this mean byte-energy is treated as silence, so Whisper
+// hallucinations (e.g. "Thank you." on a silent room) never become fake messages.
+const ENERGY_THRESHOLD = 6
+
 function speak(text: string): Promise<void> {
   return new Promise((resolve) => {
     if (!('speechSynthesis' in window)) {
@@ -229,7 +233,8 @@ export default function Live() {
   const busyRef = useRef(false)
   const sessionActiveRef = useRef(false)
   const faceTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const audioChunksRef = useRef<Blob[]>([])
+  const energyTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const chunkEnergyRef = useRef<{ sum: number; count: number }>({ sum: 0, count: 0 })
   const audioCtxRef = useRef<AudioContext | null>(null)
   const analyserRef = useRef<AnalyserNode | null>(null)
 
@@ -390,20 +395,40 @@ export default function Live() {
       }
     }
 
+    // Sample mic energy every 250ms so each uploaded chunk can be checked for
+    // real speech (this suppresses Whisper hallucinations on silence).
+    if (!energyTimerRef.current) {
+      energyTimerRef.current = setInterval(() => {
+        const a = analyserRef.current
+        if (!a || stateRef.current !== 'listening') return
+        const data = new Uint8Array(a.frequencyBinCount)
+        a.getByteFrequencyData(data)
+        let sum = 0
+        for (let i = 0; i < data.length; i++) sum += data[i]
+        const en = chunkEnergyRef.current
+        en.sum += sum / data.length
+        en.count += 1
+      }, 250)
+    }
+
     const recorder = new MediaRecorder(stream, MIME_OPUS ? { mimeType: MIME_OPUS } : undefined)
     recorder.ondataavailable = (e) => {
-      if (e.data.size > 0) audioChunksRef.current.push(e.data)
+      // This fires every ~5s (timeslice). Compute whether that chunk had real
+      // voice, then upload it immediately so server STT runs during the session.
+      const en = chunkEnergyRef.current
+      const hadVoice = en.count > 0 ? en.sum / en.count > ENERGY_THRESHOLD : true
+      en.sum = 0
+      en.count = 0
+      if (e.data && e.data.size > 0 && sessionActiveRef.current) sendVoiceChunk(e.data, hadVoice)
     }
     recorder.onstop = () => {
-      const blob = new Blob(audioChunksRef.current, { type: MIME_OPUS || 'audio/webm' })
-      audioChunksRef.current = []
-      if (blob.size > 0 && sessionActiveRef.current) sendVoiceChunk(blob)
+      /* each chunk was already uploaded via ondataavailable */
     }
     recorder.start(5000)
     recorderRef.current = recorder
   }
 
-  const sendVoiceChunk = async (blob: Blob) => {
+  const sendVoiceChunk = async (blob: Blob, hadVoice: boolean) => {
     try {
       const form = new FormData()
       form.append('file', blob, 'chunk.webm')
@@ -415,7 +440,8 @@ export default function Live() {
       // where the browser's SpeechRecognition produces nothing.
       const t = res.transcript
       if (sessionActiveRef.current && !busyRef.current && stateRef.current === 'listening') {
-        const hasSpeech = !!t && !!t.trim()
+        // A silent chunk (or a Whisper hallucination on one) must never add text.
+        const hasSpeech = hadVoice && !!t && !!t.trim()
         silentChunkRef.current = !hasSpeech
         if (hasSpeech) {
           lastActivityRef.current = 'server'
@@ -531,6 +557,11 @@ export default function Live() {
   }
 
   const stopRecorderNow = () => {
+    if (energyTimerRef.current) {
+      clearInterval(energyTimerRef.current)
+      energyTimerRef.current = null
+    }
+    chunkEnergyRef.current = { sum: 0, count: 0 }
     if (recorderRef.current && recorderRef.current.state !== 'inactive') {
       try {
         recorderRef.current.stop()
