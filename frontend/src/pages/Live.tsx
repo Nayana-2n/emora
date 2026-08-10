@@ -189,6 +189,7 @@ export default function Live() {
   const [cameraOn, setCameraOn] = useState(false)
   const [mode, setMode] = useState<SensorMode>('both')
   const [error, setError] = useState('')
+  const [sttUnsupported, setSttUnsupported] = useState(false)
 
   const cidRef = useRef<string | null>(null)
   const sidRef = useRef<string | null>(null)
@@ -368,7 +369,8 @@ export default function Live() {
         recorder.start(5000)
         recorderRef.current = recorder
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Microphone unavailable')
+        recorderRef.current = null
+        throw e instanceof Error ? e : new Error('Microphone unavailable')
       }
     }
   }
@@ -401,7 +403,8 @@ export default function Live() {
       setCameraOn(true)
       faceTimerRef.current = setInterval(captureFace, 3500)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Camera unavailable')
+      setCameraOn(false)
+      throw e instanceof Error ? e : new Error('Camera unavailable')
     }
   }
 
@@ -465,7 +468,11 @@ export default function Live() {
       setError('')
     } else {
       setError('')
-      await startCamera()
+      try {
+        await startCamera()
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Camera unavailable')
+      }
     }
   }
 
@@ -476,7 +483,11 @@ export default function Live() {
       setError('')
     } else {
       setError('')
-      await startRecorder()
+      try {
+        await startRecorder()
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Microphone unavailable')
+      }
     }
   }
 
@@ -493,6 +504,7 @@ export default function Live() {
     sessionActiveRef.current = true
     busyRef.current = false
     finalTranscriptRef.current = ''
+    setSttUnsupported(!SPEECH_RECOGNITION)
     setState('starting')
     try {
       const sres = await api<{ session_id: string }>('/api/session/start', { method: 'POST' })
@@ -506,11 +518,27 @@ export default function Live() {
           text: 'Hi, I am EMORA. I am listening. Tell me how you are feeling — a few words are enough.',
         },
       ])
-      if (mode !== 'mic') await startCamera()
-      if (mode !== 'camera') {
-        await startRecorder()
-        startRecognition()
+      // Camera / mic are best-effort: a permission problem must never kill the session.
+      const sensorWarnings: string[] = []
+      if (mode !== 'mic') {
+        try {
+          await startCamera()
+        } catch {
+          sensorWarnings.push('camera unavailable')
+        }
       }
+      if (mode !== 'camera') {
+        try {
+          await startRecorder()
+        } catch {
+          sensorWarnings.push('microphone unavailable')
+        }
+        if (SPEECH_RECOGNITION) startRecognition()
+      }
+      if (!SPEECH_RECOGNITION) {
+        sensorWarnings.push('voice-to-text needs Chrome (not Safari) — use the text box to talk to EMORA')
+      }
+      if (sensorWarnings.length) setError('Note: ' + sensorWarnings.join(' · '))
       silenceTimerRef.current = setInterval(checkSilence, 500)
       lastSpeechAtRef.current = Date.now()
       setState('listening')
@@ -632,7 +660,18 @@ export default function Live() {
       )}
 
       {live && (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[30%_40%_30%] lg:h-[calc(100vh-10rem)] lg:min-h-[560px]">
+        <>
+          {sttUnsupported && (
+            <div className="mb-4 flex items-start gap-2 rounded-2xl border border-line bg-surface/80 px-4 py-3 text-sm text-muted backdrop-blur">
+              <AudioLines className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
+              <span>
+                This browser does not support voice-to-text (common on iPhone/Safari). You can still{' '}
+                <span className="text-cream">type below</span> to talk to EMORA — mic tone-analysis still works. For full
+                voice, open this page in <span className="text-cream">Chrome</span>.
+              </span>
+            </div>
+          )}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[30%_40%_30%] lg:h-[calc(100vh-10rem)] lg:min-h-[560px]">
           {/* Camera — center column, the dominant panel */}
           <div
             className="order-1 relative h-full min-h-[420px] overflow-hidden rounded-3xl border lg:order-2"
@@ -839,6 +878,7 @@ export default function Live() {
               </Card>
             </div>
         </div>
+        </>
       )}
     </div>
   )
