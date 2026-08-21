@@ -2,7 +2,7 @@
 
 EMORA reads emotion from your **face**, **voice**, or **both** in a live session, then responds the way a caring friend would — while tracking your wellness, mood, journal, and habits over time.
 
-Built for **PixxelHack**.
+.
 
 ![Stack](https://img.shields.io/badge/React%2019-61DAFB?logo=react&logoColor=black) ![Stack](https://img.shields.io/badge/FastAPI-009688?logo=fastapi) ![Stack](https://img.shields.io/badge/Gemini-4285F4?logo=google) ![Stack](https://img.shields.io/badge/Tailwind%20v4-38BDF8?logo=tailwindcss)
 
@@ -69,4 +69,4 @@ Login → Dashboard → Live Session (camera + voice + AI reply) → Journal / A
 - **Source code:** https://github.com/Nayana-2n/emora
 - **Frontend (live):** `<Vercel URL>`
 - **Backend (API):** `<Render URL>`
-- **Demo video:** `<YouTube/Drive link>`
+`
